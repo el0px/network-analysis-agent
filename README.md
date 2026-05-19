@@ -47,7 +47,7 @@ python agent.py
 Then just type what you want:
 
 ```
-You: load the data from data/your_file.csv
+You: load the data from data/your_file.csv or wherever your data files are stored
 You: compute correlations with threshold 0.7
 You: build the network
 You: find the top 5 hub nodes
