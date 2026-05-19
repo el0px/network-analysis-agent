@@ -2,6 +2,7 @@ import pandas as pd
 from llm import generate, extract_json
 from tools import load_data, compute_correlations, build_network, find_hub_nodes, run_clustering, summarize_results, visualize_network_3d
 from gene_kb import get_gene_context, GENE_KB
+from probe_mapper import load_probe_annotations, annotate_genes
 
 
 TOOLS_DESCRIPTION = """
@@ -161,18 +162,20 @@ def route_and_run(user_query: str) -> str:
                     members = [n for n, c in state["clusters"].items() if c == cid]
                     context += f"Cluster {cid}: {', '.join(str(m) for m in members)}\n"
 
-            # Find all gene names mentioned in the question or in the analysis
-            all_genes = list(GENE_KB.keys())
-            mentioned = [g for g in all_genes if g.upper() in inp.upper()]
-        
-            # Also include all genes currently in the network
+            # Get biological context for all genes in the network
             if state["graph"] is not None:
-                network_genes = [n for n in state["graph"].nodes() if n.upper() in GENE_KB]
-                mentioned = list(set(mentioned + network_genes))
-
-            bio_context = get_gene_context(mentioned)
-            if bio_context:
-                context += "\n" + bio_context
+                network_genes = list(state["graph"].nodes())
+            
+                # Try probe annotations first (for real GEO data with probe IDs)
+                bio_context = annotate_genes(network_genes, PROBE_MAP)
+            
+                # Also check gene_kb for any named genes
+                named_genes = [g for g in network_genes if g.upper() in GENE_KB]
+                if named_genes:
+                    bio_context += "\n" + get_gene_context(named_genes)
+            
+                if bio_context:
+                    context += "\n" + bio_context
 
             if not context:
                 context = "No analysis has been run yet."
@@ -182,7 +185,7 @@ def route_and_run(user_query: str) -> str:
                     "You are a computational biologist and network analysis expert. "
                     "Answer the user's question using the analysis results AND the biological context provided. "
                     "Explain not just what the network shows statistically, but WHY genes are connected based on their biology. "
-                    "Be specific — reference actual gene names, correlation patterns, and biological mechanisms. "
+                    "Be specific and reference actual gene names, biological processes, and mechanisms. "
                     "If something cannot be determined from the data, say so clearly."},
                 {"role": "user", "content": f"Analysis results and biological context:\n{context}\n\nQuestion: {inp}"}
             ]
@@ -191,6 +194,10 @@ def route_and_run(user_query: str) -> str:
             return f"Error: {str(e)}"
     else:
         return f"Unknown tool: {tool}"
+
+print("Loading probe annotations...")
+PROBE_MAP = load_probe_annotations()
+print(f"Loaded {len(PROBE_MAP)} probe annotations")
 
 def run_agent():
     print("Network Analysis Agent ready. Type 'quit' to exit.\n")
